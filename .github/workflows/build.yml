@@ -1,0 +1,57 @@
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar proyecto (funciona con el zip sin descomprimir o con los archivos sueltos)
+        run: |
+          if [ -f settings.gradle.kts ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          else
+            ZIP=$(ls -1 *.zip | head -n 1)
+            echo "Usando $ZIP"
+            mkdir -p _src
+            unzip -q -o "$ZIP" -d _src
+            FOUND=$(find _src -name settings.gradle.kts | head -n 1)
+            echo "PROJECT_DIR=$(dirname "$FOUND")" >> "$GITHUB_ENV"
+          fi
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Compilar APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Renombrar APK
+        run: cp "${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk" TechnoWorldRadio.apk
+
+      - name: Guardar APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: TechnoWorldRadio-APK
+          path: TechnoWorldRadio.apk
+
+      - name: Publicar en Releases (descarga directa desde el móvil)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Techno World Radio v${{ github.run_number }}
+          files: TechnoWorldRadio.apk
